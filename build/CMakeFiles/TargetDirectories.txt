@@ -1,0 +1,3 @@
+/Users/larastrutzcarvalho/Desktop/ufmg/6 período/ATR/ex04/questao2/tictactoe/build/CMakeFiles/tic_tac_toe.dir
+/Users/larastrutzcarvalho/Desktop/ufmg/6 período/ATR/ex04/questao2/tictactoe/build/CMakeFiles/edit_cache.dir
+/Users/larastrutzcarvalho/Desktop/ufmg/6 período/ATR/ex04/questao2/tictactoe/build/CMakeFiles/rebuild_cache.dir

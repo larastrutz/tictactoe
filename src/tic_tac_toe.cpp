@@ -2,6 +2,9 @@
 #include <random>
 #include <thread>
 #include <array>
+#include <mutex>
+#include <condition_variable>
+#include <chrono>
 
 // Classe TicTacToe
 class TicTacToe {
@@ -10,6 +13,9 @@ class TicTacToe {
   char current_player; // Jogador atual ('X' ou 'O')
   bool game_over; // Estado do jogo
   char winner; // Vencedor do jogo
+  
+  std::mutex mtx;
+  std::condition_variable cv;
   
   public:
   TicTacToe() {
@@ -20,7 +26,7 @@ class TicTacToe {
       }
     }
     winner = '-';
-    game_over = 0;
+    game_over = false;
     // sorteia jogador inicial entre 'X' e 'O'
     static std::mt19937 sorteiaJogador(static_cast<unsigned int>(time(0)));
     static std::uniform_int_distribution<int> distr(0, 1);
@@ -40,23 +46,42 @@ class TicTacToe {
   }
   
   bool make_move(char player, int row, int col) {
-    // Implementar a lógica para realizar uma jogada no tabuleiro
-    if(!game_over){
-      if(board[row][col] != 'X' && board[row][col] != 'O'){
+    // Região Crítica
+    std::unique_lock<std::mutex> lock(mtx);
+
+    // Espera até que seja a vez deste jogador OU o jogo tenha acabado
+    cv.wait(lock, [this, player]() { 
+        return current_player == player || game_over; 
+    });
+
+    // Se o jogo acabou enquanto a thread esperava, avisa para ela parar
+    if (game_over) {
+        return true; 
+    }
+
+    // Verifica se a posição escolhida está livre
+    if(board[row][col] == ' ') {
         board[row][col] = player;
         display_board();
-        game_over = is_game_over();
-        if(player == 'O'){
-          current_player = 'X';
-        }else{
-          current_player = 'O';
+        
+        // Verifica se esta jogada encerrou o jogo
+        if (check_win(player)) {
+            winner = player;
+            game_over = true;
+        } else if (check_draw()) {
+            winner = 'D';
+            game_over = true;
         }
-        return 1;
-      }else{
-        return 0;
-      }
-    }else{
-      return 1;
+
+        // Alterna o jogador
+        current_player = (player == 'X') ? 'O' : 'X';
+
+        // Acorda a thread do outro jogador
+        cv.notify_all();
+        
+        return true; // Jogada validada e realizada
+    } else {
+        return false; // Posição ocupada, retorna falso para o jogador tentar de novo no mesmo turno
     }
   }
   
@@ -65,27 +90,23 @@ class TicTacToe {
     // linhas
     for(int i = 0; i < 3; i++){
       if(player == board[i][0] && player == board[i][1] && player == board[i][2]){
-        winner = player;
-        return 1;
+        return true;
       }
     }
     // colunas
     for(int i = 0; i < 3; i++){
       if(player == board[0][i] && player == board[1][i] && player == board[2][i]){
-        winner = player;
-        return 1;
+        return true;
       }
     }
     // diagonal
     if(player == board[0][0] && player == board[1][1] && player == board[2][2]){
-      winner = player;
-      return 1;
+      return true;
     }
     if(player == board[0][2] && player == board[1][1] && player == board[2][0]){
-      winner = player;
-      return 1;
+      return true;
     }
-    return 0;
+    return false;
   }
   
   bool check_draw() {
@@ -93,28 +114,17 @@ class TicTacToe {
     for(int i = 0; i < 3; i++){
       for(int j = 0; j < 3; j++){
         if(board[i][j] == ' '){
-          return 0;
+          return false;
         }
       }
     }
-    return 1;
-  }
-  
-  bool is_game_over() {
-    // Retornar se o jogo terminou
-    if(check_win(current_player)){
-      return 1;
-    }else if(check_draw()){
-      winner = 'D';
-      return 1;
-    }else{
-      winner = '-';
-      return 0;
-    }
+    return true;
   }
   
   char get_winner() {
     // Retornar o vencedor do jogo ('X', 'O', ou 'D' para empate)
+    // Lock para não ler o vencedor enquanto a outra thread escreve
+    std::lock_guard<std::mutex> lock(mtx);
     return winner;
   }
 };
@@ -158,7 +168,7 @@ class Player {
     // Implementar a estratégia aleatória de jogadas
     int l;
     int c;
-    bool fim = 0;
+    bool fim = false;
     static std::random_device rd;
     static std::mt19937 gen(rd());
     static std::uniform_int_distribution<> distr(0, 2);

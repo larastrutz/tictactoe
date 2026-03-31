@@ -1,0 +1,1 @@
+/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/tic_tac_toe.dir/src/tic_tac_toe.cpp.o -o tic_tac_toe
