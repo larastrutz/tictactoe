@@ -3,7 +3,6 @@
 #include <thread>
 #include <array>
 #include <mutex>
-#include <condition_variable>
 #include <chrono>
 
 // Classe TicTacToe
@@ -14,8 +13,7 @@ class TicTacToe {
   bool game_over; // Estado do jogo
   char winner; // Vencedor do jogo
   
-  std::mutex mtx;
-  std::condition_variable cv;
+  std::mutex mtx; 
   
   public:
   TicTacToe() {
@@ -46,20 +44,32 @@ class TicTacToe {
   }
   
   bool make_move(char player, int row, int col) {
-    // Região Crítica
-    std::unique_lock<std::mutex> lock(mtx);
+    // Alternância de turnos com Espera Ocupada
+    // Fica em loop até que seja a vez do jogador atual
+    while (true) {
+        mtx.lock();
 
-    // Espera até que seja a vez deste jogador OU o jogo tenha acabado
-    cv.wait(lock, [this, player]() { 
-        return current_player == player || game_over; 
-    });
+        if (game_over) {
+            mtx.unlock();
+            return true; // Se o jogo acabou, solta o lock e manda a thread parar
+        }
 
-    // Se o jogo acabou enquanto a thread esperava, avisa para ela parar
-    if (game_over) {
-        return true; 
+        if (current_player == player) {
+            // É a vez deste jogador
+            // Quebra o loop mas mantém o mutex travado para a seção crítica
+            break; 
+        }
+
+        // Se não for a vez dele, solta o lock para o outro jogador poder acessar
+        mtx.unlock(); 
+        
+        // Dá uma pausa para não usar 100% da CPU na espera ocupada
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    // Verifica se a posição escolhida está livre
+    // Seção Crítica
+    bool jogada_valida = false;
+
     if(board[row][col] == ' ') {
         board[row][col] = player;
         display_board();
@@ -75,18 +85,19 @@ class TicTacToe {
 
         // Alterna o jogador
         current_player = (player == 'X') ? 'O' : 'X';
-
-        // Acorda a thread do outro jogador
-        cv.notify_all();
         
-        return true; // Jogada validada e realizada
-    } else {
-        return false; // Posição ocupada, retorna falso para o jogador tentar de novo no mesmo turno
-    }
+        jogada_valida = true;
+    } 
+
+    // Protocolo de saída
+    mtx.unlock();
+    
+    // Retorna false se a posição estava ocupada (para o jogador tentar outra casa)
+    // Retorna true se a jogada foi feita com sucesso
+    return jogada_valida; 
   }
   
   bool check_win(char player) {
-    // Verificar se o jogador atual venceu o jogo
     // linhas
     for(int i = 0; i < 3; i++){
       if(player == board[i][0] && player == board[i][1] && player == board[i][2]){
